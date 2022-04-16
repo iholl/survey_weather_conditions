@@ -42,13 +42,11 @@ os.remove(export_path)
 current_data = os.path.join(folder_path, "current_data.csv")
 feature = "{}_{}.csv".format(config("LAYER_NAME"), config("LAYER_ID"))
 new_data = os.path.join(folder_path, feature)
-os.rename(new_data, current_data)
-clear_new_data(folder_path)
 
 # if current data is not avaliable, create current data and remove files 
 current_df = pd.read_csv(current_data)
-df = current_df[["GlobalID","CreationDate", "x", "y"]]
 
+df = current_df[["GlobalID","CreationDate", "x", "y"]]
 df["Dates"] = pd.to_datetime(df["CreationDate"]).dt.date
 df["Time"] = pd.to_datetime(df["CreationDate"]).dt.time
 df["DateTime"] = pd.to_datetime(df["Dates"].astype(str) + " " + df["Time"].astype(str))
@@ -57,20 +55,24 @@ df["Unix"] = (df["DateTime"] - pd.Timestamp("1970-01-01")) // pd.Timedelta("1s")
 weather_data = []
 
 for idx, row in df.iterrows():
-    url = "https://api.openweathermap.org/data/2.5/onecall/timemachine?lat={}&lon={}&dt={}&appid=e2792507a8948ac554f6812fc82a6394"
-    response = requests.get(url.format(row["y"],row["x"],row["Unix"]))
-    weather = response.json()
-    print(idx, response)
-    data_list = []
-    data_list.append(row["GlobalID"])
-    data_list.append(weather['current']['temp'] * 9/5 - 459.67)
-    data_list.append(weather['current']['clouds'])
-    data_list.append(weather['current']['wind_speed'])
-    weather_data.append(data_list)
+    try:
+        url = "https://api.openweathermap.org/data/2.5/onecall/timemachine?lat={}&lon={}&dt={}&appid={}"
+        response = requests.get(url.format(row["y"],row["x"],row["Unix"],config("OPEN_WEATHER_API_KEY")))
+        weather = response.json()
+        print(idx, response)
+        data_list = []
+
+        data_list.append(row["GlobalID"])
+        data_list.append(weather['current']['temp'] * 9/5 - 459.67)
+        data_list.append(weather['current']['clouds'])
+        data_list.append(weather['current']['wind_speed'])
+        weather_data.append(data_list)
+    except ValueError:
+        print("The date provided is not within the past 5 days")
 
 df = pd.DataFrame(weather_data, columns=["ParentGlobalID", "Temperature", "CloudCover", "WindSpeed"])
 csv_name = "{}_weather_data.csv".format(name)
-table = df.to_csv(csv_name)
+table = df.to_csv(os.path.join(folder_path, csv_name))
 
 csv_item = gis.content.add(csv_name)
 csv_item.move(config("ARCGIS_ONLINE_FOLDER_NAME"))
